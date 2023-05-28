@@ -7,7 +7,7 @@ from settings import dbpwd
 
 app = Flask(__name__)
 cors = CORS(app)
-
+app.config['CORS_HEADERS'] = 'Content-Type'
 
 db = mysql.connect(
 	host = "localhost",
@@ -16,6 +16,7 @@ db = mysql.connect(
 	database = "blog")
 
 @app.route('/posts/', methods=['GET', 'POST'])
+@cross_origin()
 def managePosts():
 	if request.method == 'GET':
 		return getAllPosts()
@@ -31,9 +32,10 @@ def getPost():
 	cursor = db.cursor()
 	cursor.execute(query, values)
 	record = cursor.fetchone()
-	cursor.close()
-	header = ['id', 'title', 'content']
-	return json.dumps(dict(zip(header, record)))
+	cursor.close()	
+	row_headers=[x[0] for x in cursor.description]
+
+	return json.dumps(dict(zip(row_headers, record)))
 
 
 def getAllPosts():
@@ -42,7 +44,11 @@ def getAllPosts():
 	mycursor.execute(query)
 	myresult = mycursor.fetchall()
 	mycursor.close()
-	return myresult
+	row_headers=[x[0] for x in mycursor.description]
+	json_data=[]
+	for result in myresult:
+		json_data.append(dict(zip(row_headers,result)))
+	return json.dumps(json_data)
 
 
 def createPost():
