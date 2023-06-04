@@ -3,7 +3,7 @@ from flask_cors import CORS, cross_origin
 import mysql.connector as mysql
 import json
 from settings import dbpwd
-
+import db
 
 app = Flask(__name__)
 cors = CORS(app)
@@ -25,26 +25,25 @@ def managePosts():
 
 
 
-@app.route("/posts/:id")
-def getPost():
+@app.route("/posts/<id>",  methods=['GET'])
+def getPost(id):
 	query = "select id, title, content from posts where id = %s"
-	values = (id)
+	values = (id,)
 	cursor = db.cursor()
 	cursor.execute(query, values)
 	record = cursor.fetchone()
-	cursor.close()	
 	row_headers=[x[0] for x in cursor.description]
-
+	cursor.close()	
 	return json.dumps(dict(zip(row_headers, record)))
 
 
 def getAllPosts():
-	query = "SELECT * FROM posts"
+	query = "SELECT id, title, content FROM posts"
 	mycursor = db.cursor()
 	mycursor.execute(query)
 	myresult = mycursor.fetchall()
-	mycursor.close()
 	row_headers=[x[0] for x in mycursor.description]
+	mycursor.close()
 	json_data=[]
 	for result in myresult:
 		json_data.append(dict(zip(row_headers,result)))
@@ -57,33 +56,31 @@ def createPost():
 	values = (data['title'], data['content'])
 	mycursor = db.cursor()
 	mycursor.execute(query, values)
-	mycursor.close()
-	db.commit()
 	new_city_id = mycursor.lastrowid
 	mycursor.close()
+	db.commit()
 	return getPost(new_city_id)
 
 
 
-def createUser():
-	data = request.get_json()
-	query = "INSERT INTO users (username, password) VALUES (%s, %s)"
-	values = (data['username'], data['password'])
-	mycursor = db.cursor()
-	mycursor.execute(query, values)
-	mycursor.close()
-	db.commit()
-	new_city_id = mycursor.lastrowid
-	mycursor.close()
-	return getUser(new_city_id)
+# def createUser():
+# 	data = request.get_json()
+# 	query = "INSERT INTO users (username, password) VALUES (%s, %s)"
+# 	values = (data['username'], data['password'])
+# 	mycursor = db.cursor()
+# 	mycursor.execute(query, values)
+# 	new_city_id = mycursor.lastrowid
+# 	mycursor.close()
+# 	db.commit()
+# 	return getUser(new_city_id)
 
-def getUser(id):
-	query = "SELECT * from users where id=%s"
-	mycursor = db.cursor()
-	mycursor.execute(query)
-	myresult = mycursor.fetchall()
-	mycursor.close()
-	return myresult
+# def getUser(id):
+# 	query = "SELECT * from users where id=%s"
+# 	mycursor = db.cursor()
+# 	mycursor.execute(query)
+# 	myresult = mycursor.fetchall()
+# 	mycursor.close()
+# 	return myresult
 
 if __name__ == "__main__":
 	app.run()
