@@ -172,9 +172,8 @@ def logout():
 		values = (session_id,)
 		cursor = db.cursor()
 		cursor.execute(query, values)
-		record = cursor.fetchone()
 		cursor.close()
-		if not record:
+		if cursor.rowcount == 0:
 			abort(401)
 
 		resp = make_response()
