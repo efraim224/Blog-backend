@@ -3,14 +3,11 @@ from flask_cors import CORS, cross_origin
 import mysql.connector as mysql
 import json
 from settings import dbpwd
-# from db import db 
-# from users import *
 import bcrypt
 import uuid
 
 app = Flask(__name__)
 CORS(app,supports_credentials=True,origins=["http://localhost:3000"], expose_headers='Set-Cookie')
-# CORS(app, supports_credentials=True)
 
 db = mysql.connect(
 	host = "localhost",
@@ -104,42 +101,6 @@ def check_login():
 		abort(401)
 
 
-# @app.route('/login', methods=['POST'])
-# def login():
-# 	data = request.get_json()
-# 	print(data)
-# 	query = "select id, username, password from users where username = %s"
-# 	values = (data['username'], )
-# 	cursor = db.cursor()
-# 	cursor.execute(query, values)
-# 	record = cursor.fetchone()
-# 	cursor.close()
-	
-# 	if not record:
-# 		abort(401)
-
-
-# 	user_id = record[0]
-# 	hashed_pwd = record[2].encode('utf-8')
-
-# 	encoded_pass = data['password'].encode('utf-8')
-
-# 	if bcrypt.hashpw(encoded_pass, hashed_pwd) != hashed_pwd:
-# 		abort(401)
-
-# 	query = "insert into sessions (user_id, session_id) values (%s, %s)"
-# 	session_id = str(uuid.uuid4())
-# 	values = (record[0], session_id)
-# 	cursor = db.cursor()
-# 	cursor.execute(query, values)
-# 	db.commit()
-# 	cursor.close()
-# 	resp = make_response()
-# 	# resp.set_cookie("session_id", session_id)
-# 	resp.set_cookie("session_id", value=session_id, max_age=None, expires=None, path='/', domain=None, secure=None, httponly=False, samesite=None)
-# 	resp.status_code = 200
-# 	return resp
-
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -191,35 +152,15 @@ def user_signup():
 	return login()
 
 
-# @app.route('/logout', methods=['POST'])
-# def logout():
-# 	try:
-# 		session_id = request.cookies.get("session_id")
-# 		if not session_id:
-# 			abort(401)
-# 		query = "delete from sessions where session_id = %s"
-# 		values = (session_id,)
-# 		cursor = db.cursor()
-# 		cursor.execute(query, values)
-# 		cursor.close()
-# 		if cursor.rowcount == 0:
-# 			abort(401)
-
-# 		resp = make_response()
-# 		resp.status_code = 200
-# 		return resp
-# 	except:
-		
-# 		resp = make_response()
-# 		resp.status_code = 500
-# 		return resp
-
 
 @app.route('/logout', methods=['POST'])
 def logout():
+    resp = make_response()
+    resp.set_cookie("session_id", value='', max_age=0, expires=0, path='/', domain=None, secure=None, httponly=False, samesite=None)
     session_id = request.cookies.get("session_id")
     if not session_id:
-        return make_response(jsonify({'error': 'Unauthorized'}), 401)
+        resp.response = jsonify({'error': 'Unauthorized'}), 401
+        return resp
 
     try:
         cursor = db.cursor()
@@ -228,13 +169,50 @@ def logout():
         db.commit()
         if cursor.rowcount == 0:
             cursor.close()
-            return make_response(jsonify({'error': 'Unauthorized'}), 401)
+            resp.response = jsonify({'error': 'Unauthorized'}), 401
+            return resp
         cursor.close()
-        return jsonify({'status': 'Success'}), 200
+        resp.response = jsonify({'status': 'Success'}), 200
+        return resp
     except Exception as e:
         if cursor:  # Check if cursor exists before attempting to close it
             cursor.close()
-        return make_response(jsonify({'error': 'Internal Server Error'}), 500)
+        resp.response = jsonify({'error': 'Internal Server Error'}), 500
+        return resp
+
+
+
+@app.route('/save_post', methods=['POST'])
+def save_post():
+    data = request.get_json()
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        abort(401)
+
+    query = "select user_id from sessions where session_id = %s"
+    values = (session_id,)
+    cursor = db.cursor()
+    cursor.execute(query, values)
+    record = cursor.fetchone()
+    if record is None:
+        abort(401)
+    
+    user_id = record[0]
+    post_id = str(uuid.uuid4())  # Generate a new UUID for the post
+
+    # Assuming your data includes 'title' and 'content'
+    save_post_user_id_to_post_id(user_id, post_id, data['title'], data['content'])
+    cursor.close()
+    return {"status": "success"}, 200
+
+def save_post_user_id_to_post_id(user_id, post_id, title, content):
+    query = "INSERT INTO saved_posts (post_id, user_id) VALUES(%s, %s)"
+    values = (post_id, user_id)
+    cursor = db.cursor()
+    cursor.execute(query, values)
+    db.commit()
+    cursor.close()
+
 
 if __name__ == "__main__":
 	app.run()
