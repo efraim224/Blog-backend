@@ -9,6 +9,9 @@ import datetime
 import os
 import mysql.connector, mysql.connector.pooling
 from dotenv import load_dotenv
+from tags import *
+from users import *
+from posts import *
 
 
 app = Flask(__name__, static_folder="./build", static_url_path="/")
@@ -43,10 +46,6 @@ pool = mysql.connector.pooling.MySQLConnectionPool(
 # @app.route('/<path:path>')
 # def catch_all(path):
 #     return app.send_static_file("index.html")
-
-
-
-
 
 
 @app.route("/comments/<id>", methods=["GET"])
@@ -100,68 +99,25 @@ def create_comment(post_id):
 
 # region tags
 
-# region routes
-
 @app.route('/tags/<int:postId>', methods=['GET'])
 def get_tags(postId):
     tags = query_tags_by_postId(postId)
     return jsonify(tags)
 
 @app.route('/tags', methods=['POST'])
-def create():
+def get_all_tags_by_post_ids():
     data = request.get_json()
-    postId = data['postId']
-    rank = data['rank']
-    content = data['content']
-    create_tag(postId, rank, content)
-    return jsonify({'status': 'Tag created'})
+    post_ids = data["post_ids"]
+    tags = get_tags_by_post_ids_dict(post_ids)
+    return jsonify(tags)
 
-@app.route('/tags', methods=['DELETE'])
+@app.route('/tags/<int:postId>', methods=['DELETE'])
 def delete(tagId):
     delete_tag(tagId)
     return jsonify({'status': 'Tag deleted'})
 
 # endregion
 
-
-# region methods
-# 1. Query all tags for a given postId, sorted by rank
-def query_tags_by_postId(postId):
-    connection = pool.get_connection()
-    try:
-        cursor = connection.cursor(dictionary=True)
-        sql = "SELECT `id`, `postId`, `rank`, `content` FROM `tags` WHERE `postId` = %s ORDER BY `rank` ASC"
-        cursor.execute(sql, (postId,))
-        result = cursor.fetchall()
-        return result
-    finally:
-        connection.close()
-
-# 2. Create a tag with postId, rank, and content
-def create_tag(postId, rank, content):
-    connection = pool.get_connection()
-    try:
-        cursor = connection.cursor()
-        sql = "INSERT INTO `tags` (`postId`, `rank`, `content`) VALUES (%s, %s, %s)"
-        cursor.execute(sql, (postId, rank, content))
-        connection.commit()
-    finally:
-        connection.close()
-
-# 3. Delete a tag by tagId
-def delete_tag(tagId):
-    connection = pool.get_connection()
-    try:
-        cursor = connection.cursor()
-        sql = "DELETE FROM `tags` WHERE `id` = %s"
-        cursor.execute(sql, (tagId,))
-        connection.commit()
-    finally:
-        connection.close()
-
-# endregion
-
-# endregion
 
 
 # region posts
@@ -186,25 +142,6 @@ def delete_post(id):
 
     return jsonify({"status": "Success"}), 200
 
-def update_post(id):
-    user_id = get_user_id_by_session()
-    data = request.get_json()
-    query = "update posts set title = %s, content = %s where id = %s and writer_id = %s"
-    values = (data["title"], data["content"], id, user_id)
-    connection = pool.get_connection()
-    cursor = connection.cursor()
-    try:
-        cursor.execute(query, values)
-        connection.commit()
-    except mysql.connector.Error as err:
-        print("Error: {}".format(err))
-        connection.rollback()
-        return jsonify({"error": "Database query failed"}), 500
-    finally:
-        cursor.close()
-        connection.close()
-    return jsonify({"status": "Success"}), 200
-
 
 @app.route("/posts", methods=["GET", "POST"])
 def posts_redirect():
@@ -219,12 +156,6 @@ def managePosts():
         return createOrUpdatePost()
 
 
-def createOrUpdatePost():
-    data = request.get_json()
-    if "postId" in data:
-        return update_post(data["postId"])
-    else:
-        return createPost()
 
 @app.route("/posts/<id>", methods=["GET"])
 def getPost(id):
@@ -289,65 +220,6 @@ def getMyPosts():
     return jsonify(json_data)
 
 
-def getAllPosts():
-    query = (
-        "SELECT writer_id, id, title, content, created_at FROM posts where status=%s"
-    )
-    values = ("publish",)
-
-    connection = pool.get_connection()
-    cursor = connection.cursor()
-
-    try:
-        cursor.execute(query, values)
-        results = cursor.fetchall()
-        ids = list(map(lambda x: str(x[0]), results))
-        users_id_dict = get_users_by_ids(ids)
-        row_headers = ["name"] + [x[0] for x in cursor.description]
-
-        date_format = r"%d-%m-%Y"
-        json_data = []
-        for result in results:
-            date = result[-1].strftime(date_format)
-            name = users_id_dict[result[0]]
-            json_data.append(dict(zip(row_headers, (name, *result[0:-1], date))))
-
-    except mysql.connector.Error as err:
-        print("Error: {}".format(err))
-        connection.rollback()
-        return jsonify({"error": "Database query failed"}), 500
-
-    finally:
-        cursor.close()
-        connection.close()
-
-    return jsonify(json_data)
-
-
-def createPost():
-    data = request.get_json()
-    query = (
-        "INSERT INTO posts (title, content, writer_id, status) VALUES (%s, %s, %s, %s)"
-    )
-    values = (data["title"], data["content"], get_user_id_by_session(), "publish")
-
-    connection = pool.get_connection()
-    cursor = connection.cursor()
-    try:
-        cursor.execute(query, values)
-        connection.commit()
-        new_post_id = cursor.lastrowid
-    except mysql.connector.Error as err:
-        print("Error: {}".format(err))
-        connection.rollback()
-        return jsonify({"error": "Database query failed"}), 500
-    finally:
-        cursor.close()
-        connection.close()
-
-    return make_response(jsonify({"id": new_post_id}), 201)
-
-
 @app.route("/update_status", methods=["POST"])
 def update_post_status():
     data = request.get_json()
@@ -373,68 +245,11 @@ def update_post_status():
     return jsonify({"status": "Success"}), 200
 
 
-def save_post_user_id_to_post_id(user_id, post_id, title, content):
-    query = "INSERT INTO saved_posts (post_id, user_id) VALUES(%s, %s)"
-    values = (post_id, user_id)
-    cursor = pool.get_connection()
-    cursor.execute(query, values)
-    pool.commit()
-    cursor.close()
 
 # endregion
 
 # region user profile
 
-
-def createUser():
-    data = request.get_json()
-    query = "INSERT INTO users (username, password) VALUES (%s, %s)"
-    values = (data["username"], data["password"])
-
-    connection = pool.get_connection()
-
-    mycursor = connection.cursor()
-    mycursor.execute(query, values)
-    new_city_id = mycursor.lastrowid
-    mycursor.close()
-    pool.commit()
-    return getUser(new_city_id)
-
-
-def getUser(id):
-    query = "SELECT * from users where id=%s"
-
-    connection = pool.get_connection()
-    mycursor = connection.cursor()
-    mycursor.execute(query)
-    myresult = mycursor.fetchall()
-    mycursor.close()
-    return myresult
-
-
-def get_user_id_by_session():
-    session_id = request.cookies.get("session_id")
-    if not session_id:
-        abort(401)
-    query = "select user_id from sessions where session_id = %s"
-    values = (session_id,)
-    connection = pool.get_connection()
-    cursor = connection.cursor()
-
-    try:
-        cursor.execute(query, values)
-        record = cursor.fetchone()
-        if not record:
-            abort(401)
-        else:
-            return record[0]
-    except mysql.connector.Error as err:
-        print("Error: {}".format(err))
-        connection.rollback()
-        return jsonify({"error": "Database query failed"}), 500
-    finally:
-        cursor.close()
-        connection.close()
 
 @app.route("/logout", methods=["POST"])
 def logout():
@@ -563,50 +378,6 @@ def user_signup():
         connection.close()
 
     return login()
-
-
-def get_users_by_ids(ids):
-    placeholders = ", ".join(["%s"] * len(ids))
-    query = f"SELECT id, first_name, last_name FROM users WHERE id IN ({placeholders})"
-
-    connection = pool.get_connection()
-    cursor = connection.cursor()
-    try:
-        cursor.execute(query, ids)
-        records = cursor.fetchall()
-        users_dict = {record[0]: record[1] + " " + record[2] for record in records}
-    except mysql.connector.Error as err:
-        print("Error: {}".format(err))
-        connection.rollback()
-        return jsonify({"error": "Database query failed"}), 500
-    finally:
-        cursor.close()
-        connection.close()
-
-    return users_dict
-
-
-def get_users_full_name_by_id(id):
-    query = "select first_name, last_name from users where id = %s"
-    values = (id,)
-
-    connection = pool.get_connection()
-    cursor = connection.cursor()
-    try:
-        cursor.execute(query, values)
-        record = cursor.fetchone()
-        if record is None:
-            return None
-        full_name = record[0] + " " + record[1]
-    except mysql.connector.Error as err:
-        print("Error: {}".format(err))
-        connection.rollback()
-        return jsonify({"error": "Database query failed"}), 500
-    finally:
-        cursor.close()
-        connection.close()
-
-    return full_name
 
 # endregion
 
