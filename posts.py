@@ -108,3 +108,99 @@ def save_post_user_id_to_post_id(user_id, post_id, title, content):
     cursor.execute(query, values)
     pool.commit()
     cursor.close()
+
+# def get_post_by_ids(post_ids):
+#     placeholders = ", ".join(["%s"] * len(post_ids))
+#     query = f"SELECT id, title, content, writer_id FROM posts WHERE id IN ({placeholders})"
+
+#     connection = pool.get_connection()
+#     cursor = connection.cursor()
+#     try:
+#         cursor.execute(query, post_ids)
+#         records = cursor.fetchall()
+#         posts_dict = {record[0]: {"title": record[1], "content": record[2], "writer_id": record[3]} for record in records}
+#         return posts_dict
+#     except mysql.connector.Error as err:
+#         print("Error: {}".format(err))
+#         connection.rollback()
+#         return jsonify({"error": "Database query failed"}), 500
+#     finally:
+#         cursor.close()
+#         connection.close()
+
+# def getPostsByIds(post_ids):
+#     placeholders = ", ".join(["%s"] * len(post_ids))
+#     query = (
+#         f"SELECT writer_id, id, title, content, created_at FROM posts WHERE status=%s AND id IN ({placeholders})"
+#     )
+#     values = ("publish", *post_ids)
+
+#     connection = pool.get_connection()
+#     cursor = connection.cursor()
+
+#     try:
+#         cursor.execute(query, values)
+#         results = cursor.fetchall()
+#         if len(results) == 0:
+#             return jsonify({"error": "No posts found"}), 404
+
+#         ids = list(map(lambda x: str(x[0]), results))
+#         users_id_dict = get_users_by_ids(ids)
+#         row_headers = ["name"] + [x[0] for x in cursor.description]
+
+#         date_format = r"%d-%m-%Y"
+#         json_data = []
+#         for result in results:
+#             date = result[-1].strftime(date_format)
+#             name = users_id_dict[result[0]]
+#             json_data.append(dict(zip(row_headers, (name, *result[0:-1], date))))
+
+#         return json_data
+
+#     except mysql.connector.Error as err:
+#         print("Error: {}".format(err))
+#         connection.rollback()
+#         return jsonify({"error": "Database query failed"}), 500
+
+#     finally:
+#         cursor.close()
+#         connection.close()
+
+def getPostsByIds(post_ids):
+    placeholders = ", ".join(["%s"] * len(post_ids))
+    query = (
+        f"SELECT writer_id, id, title, content, created_at FROM posts WHERE status=%s AND id IN ({placeholders})"
+    )
+    values = ("publish", *post_ids)
+
+    connection = pool.get_connection()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute(query, values)
+        results = cursor.fetchall()
+
+        if len(results) == 0:
+            return []
+
+        ids = list(map(lambda x: str(x[0]), results))
+        users_id_dict = get_users_by_ids(ids)
+        row_headers = ["name"] + [x[0] for x in cursor.description]
+
+        date_format = r"%d-%m-%Y"
+        json_data = []
+        for result in results:
+            date = result[-1].strftime(date_format)
+            name = users_id_dict[result[0]]
+            json_data.append(dict(zip(row_headers, (name, *result[0:-1], date))))
+
+        return json_data
+
+    except mysql.connector.Error as err:
+        print("Error: {}".format(err))
+        connection.rollback()
+        return []
+
+    finally:
+        cursor.close()
+        connection.close()

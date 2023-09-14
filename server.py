@@ -47,6 +47,79 @@ pool = mysql.connector.pooling.MySQLConnectionPool(
 # def catch_all(path):
 #     return app.send_static_file("index.html")
 
+@app.route("/search/<search_term>", methods=["GET"])
+def search(search_term):
+    search_type = request.args.get('type', 'all')  # default to 'all' if no 'type' param is given
+
+    if search_type == 'tag':
+        return get_posts_by_tag(search_term)
+
+    elif search_type == 'title':
+        return get_search_posts_by_title(search_term)
+
+    elif not search_type or search_type == 'all':
+        return get_posts_by_tag_and_title(search_term)
+
+    else:
+        return jsonify({"error": "Invalid type parameter"}), 400
+
+def get_posts_by_tag_and_title(search_term):
+    # Search posts by tag
+    posts_by_tag = []
+    posts_by_tag = get_posts_by_tag(search_term)
+
+    # Search posts by title
+    posts_by_title = get_search_posts_by_title(search_term)
+
+    # Combine the two lists, eliminating duplicates based on post IDs
+    combined_posts = {}
+    for post in posts_by_tag + posts_by_title:
+        post_id = post.get("id", None)
+        if post_id is not None:
+            combined_posts[post_id] = post
+
+    return jsonify(list(combined_posts.values()))
+
+# @app.route("/search/<search_term>", methods=["GET"])
+# def get_search_results(search_term):
+#     if search_term[0] == "#":
+#         return get_post_by_tag(search_term)
+#     else:
+#         return get_search_posts_by_title(search_term)
+    
+def get_posts_by_tag(search_term):
+    post_ids = get_post_ids_by_tag_content(search_term)
+    post_ids = [x[0] for x in post_ids]
+    post_ids = list(set(post_ids))
+    posts = getPostsByIds(post_ids)
+    return posts
+
+def get_search_posts_by_title(search_term):
+    post_query = "SELECT id, title, content, created_at FROM posts where status=%s and title like %s"
+    like = "%" + search_term + "%"
+    post_values = ("publish", like)
+
+    connection = pool.get_connection()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute(post_query, post_values)
+        results = cursor.fetchall()
+        row_headers = [x[0] for x in cursor.description]
+
+        json_data = [dict(zip(row_headers, result)) for result in results]
+
+    except mysql.connector.Error as err:
+        print("Error: {}".format(err))
+        connection.rollback()
+        return jsonify({"error": "Database query failed"}), 500
+
+    finally:
+        cursor.close()
+        connection.close()
+
+    return json_data
+
 
 @app.route("/comments/<id>", methods=["GET"])
 def get_comments_by_post_id(id):
